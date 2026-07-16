@@ -3,26 +3,23 @@ TEST_PAGE_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BuildGuard Face Lab</title>
+  <title>BuildGuard Lab</title>
   <style>
     :root {
-      color-scheme: light;
-      --bg: #f5f7fb;
+      --bg: #f4f6f8;
       --panel: #ffffff;
-      --ink: #17202a;
-      --muted: #607086;
-      --line: #d9e0ea;
+      --ink: #18212f;
+      --muted: #657386;
+      --line: #d9e1ea;
       --accent: #0f766e;
-      --accent-ink: #ffffff;
-      --warn: #b42318;
+      --danger: #b42318;
       --ok: #087443;
-      --shadow: 0 14px 34px rgba(31, 42, 68, 0.12);
+      --soft: #eef3f7;
+      --shadow: 0 12px 28px rgba(24, 33, 47, 0.12);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -31,14 +28,14 @@ TEST_PAGE_HTML = """<!doctype html>
     }
 
     header {
-      min-height: 76px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 20px;
+      gap: 16px;
+      min-height: 76px;
       padding: 18px clamp(16px, 4vw, 44px);
       border-bottom: 1px solid var(--line);
-      background: #ffffff;
+      background: var(--panel);
     }
 
     h1 {
@@ -63,17 +60,17 @@ TEST_PAGE_HTML = """<!doctype html>
 
     main {
       display: grid;
-      grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+      grid-template-columns: minmax(300px, 390px) minmax(0, 1fr);
       gap: 18px;
-      padding: 18px clamp(16px, 4vw, 44px) 36px;
       max-width: 1440px;
       margin: 0 auto;
+      padding: 18px clamp(16px, 4vw, 44px) 36px;
     }
 
     section {
-      background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
+      background: var(--panel);
       box-shadow: var(--shadow);
     }
 
@@ -86,8 +83,9 @@ TEST_PAGE_HTML = """<!doctype html>
       padding: 16px;
     }
 
-    .panel h2 {
-      margin: 0 0 14px;
+    .panel h2,
+    .toolbar h2 {
+      margin: 0 0 12px;
       font-size: 16px;
       letter-spacing: 0;
     }
@@ -102,18 +100,18 @@ TEST_PAGE_HTML = """<!doctype html>
       gap: 6px;
       color: var(--muted);
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
     }
 
     input[type="text"],
     input[type="file"] {
       width: 100%;
       min-height: 40px;
+      padding: 8px 10px;
       border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 8px 10px;
-      color: var(--ink);
       background: #ffffff;
+      color: var(--ink);
       font: inherit;
     }
 
@@ -126,10 +124,10 @@ TEST_PAGE_HTML = """<!doctype html>
       border: 0;
       border-radius: 6px;
       padding: 0 14px;
-      color: var(--accent-ink);
       background: var(--accent);
+      color: #ffffff;
       font: inherit;
-      font-weight: 700;
+      font-weight: 800;
       cursor: pointer;
     }
 
@@ -139,7 +137,7 @@ TEST_PAGE_HTML = """<!doctype html>
     }
 
     button.danger {
-      background: var(--warn);
+      background: var(--danger);
     }
 
     button:disabled {
@@ -153,10 +151,48 @@ TEST_PAGE_HTML = """<!doctype html>
       flex-wrap: wrap;
     }
 
-    .workspace {
-      min-height: 620px;
+    .message {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .message.ok { color: var(--ok); }
+    .message.err { color: var(--danger); }
+
+    .summary {
       display: grid;
-      grid-template-rows: auto minmax(320px, 1fr) auto;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .metric {
+      min-height: 70px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: var(--soft);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 24px;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .workspace {
+      min-height: 680px;
+      display: grid;
+      grid-template-rows: auto minmax(360px, 1fr) auto;
       overflow: hidden;
     }
 
@@ -164,67 +200,61 @@ TEST_PAGE_HTML = """<!doctype html>
       display: flex;
       align-items: end;
       justify-content: space-between;
-      gap: 14px;
+      gap: 16px;
       padding: 16px;
       border-bottom: 1px solid var(--line);
     }
 
-    .identify-form {
-      width: min(100%, 520px);
-      display: grid;
+    .toolbar form {
+      width: min(100%, 560px);
       grid-template-columns: minmax(0, 1fr) auto;
-      gap: 10px;
       align-items: end;
     }
 
     .canvas-wrap {
       display: grid;
       place-items: center;
-      min-height: 320px;
+      min-height: 360px;
       padding: 16px;
       background:
-        linear-gradient(90deg, rgba(23, 32, 42, 0.05) 1px, transparent 1px),
-        linear-gradient(rgba(23, 32, 42, 0.05) 1px, transparent 1px);
+        linear-gradient(90deg, rgba(24, 33, 47, 0.05) 1px, transparent 1px),
+        linear-gradient(rgba(24, 33, 47, 0.05) 1px, transparent 1px);
       background-size: 24px 24px;
-    }
-
-    canvas {
-      max-width: 100%;
-      max-height: 68vh;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #ffffff;
     }
 
     .empty {
       display: grid;
       place-items: center;
+      min-height: 360px;
       width: 100%;
-      min-height: 320px;
       border: 1px dashed #b7c2d2;
       border-radius: 8px;
-      color: var(--muted);
       background: rgba(255, 255, 255, 0.74);
+      color: var(--muted);
       text-align: center;
-      font-weight: 700;
+      font-weight: 800;
+    }
+
+    canvas {
+      max-width: 100%;
+      max-height: 72vh;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #ffffff;
     }
 
     .results {
-      display: grid;
-      gap: 10px;
       padding: 14px 16px 16px;
       border-top: 1px solid var(--line);
       background: #ffffff;
     }
 
-    .result-grid {
+    .result-list {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 10px;
     }
 
     .result-item {
-      min-height: 78px;
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 10px;
@@ -233,7 +263,7 @@ TEST_PAGE_HTML = """<!doctype html>
 
     .result-item strong {
       display: block;
-      margin-bottom: 4px;
+      margin-bottom: 5px;
       font-size: 15px;
     }
 
@@ -246,8 +276,8 @@ TEST_PAGE_HTML = """<!doctype html>
     }
 
     pre {
-      min-height: 160px;
-      max-height: 360px;
+      min-height: 220px;
+      max-height: 460px;
       overflow: auto;
       margin: 0;
       padding: 12px;
@@ -260,22 +290,7 @@ TEST_PAGE_HTML = """<!doctype html>
       white-space: pre-wrap;
     }
 
-    .message {
-      min-height: 24px;
-      color: var(--muted);
-      font-size: 13px;
-      overflow-wrap: anywhere;
-    }
-
-    .message.ok {
-      color: var(--ok);
-    }
-
-    .message.err {
-      color: var(--warn);
-    }
-
-    @media (max-width: 860px) {
+    @media (max-width: 900px) {
       header {
         align-items: flex-start;
         flex-direction: column;
@@ -285,26 +300,27 @@ TEST_PAGE_HTML = """<!doctype html>
         grid-template-columns: 1fr;
       }
 
-      .identify-form {
-        grid-template-columns: 1fr;
+      .toolbar {
+        align-items: stretch;
+        flex-direction: column;
       }
 
-      .workspace {
-        min-height: 520px;
+      .toolbar form {
+        grid-template-columns: 1fr;
       }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>BuildGuard Face Lab</h1>
+    <h1>BuildGuard Lab</h1>
     <div id="serviceStatus" class="status-pill">Checking service</div>
   </header>
 
   <main>
     <div class="stack">
       <section class="panel">
-        <h2>Register</h2>
+        <h2>Register Face</h2>
         <form id="registerForm">
           <label>ID
             <input id="registerId" name="id" type="text" autocomplete="off" required>
@@ -312,22 +328,22 @@ TEST_PAGE_HTML = """<!doctype html>
           <label>Name
             <input id="registerName" name="name" type="text" autocomplete="off">
           </label>
-          <label>Image
+          <label>Face Image
             <input id="registerImage" name="img" type="file" accept="image/*" required>
           </label>
-          <button type="submit">Register Face</button>
+          <button type="submit">Register</button>
           <div id="registerMessage" class="message"></div>
         </form>
       </section>
 
       <section class="panel">
-        <h2>Delete</h2>
+        <h2>Delete Face</h2>
         <form id="deleteForm">
           <label>ID
             <input id="deleteId" type="text" autocomplete="off" required>
           </label>
           <div class="button-row">
-            <button class="danger" type="submit">Delete Face</button>
+            <button class="danger" type="submit">Delete</button>
             <button class="secondary" id="refreshStatus" type="button">Refresh</button>
           </div>
           <div id="deleteMessage" class="message"></div>
@@ -335,7 +351,17 @@ TEST_PAGE_HTML = """<!doctype html>
       </section>
 
       <section class="panel">
-        <h2>Response</h2>
+        <h2>Result</h2>
+        <div class="summary">
+          <div class="metric">
+            <strong id="violationCount">0</strong>
+            <span>violations</span>
+          </div>
+          <div class="metric">
+            <strong id="personCount">0</strong>
+            <span>persons</span>
+          </div>
+        </div>
         <pre id="responseBox">{}</pre>
       </section>
     </div>
@@ -343,44 +369,45 @@ TEST_PAGE_HTML = """<!doctype html>
     <section class="workspace">
       <div class="toolbar">
         <div>
-          <h2>Identify</h2>
-          <div id="identifyMessage" class="message"></div>
+          <h2>PPE Detection</h2>
+          <div id="detectMessage" class="message"></div>
         </div>
-        <form id="identifyForm" class="identify-form">
-          <label>Image
-            <input id="identifyImage" name="img" type="file" accept="image/*" required>
+        <form id="detectForm">
+          <label>Site Image
+            <input id="detectImage" name="img" type="file" accept="image/*" required>
           </label>
-          <button type="submit">Identify</button>
+          <button type="submit">Detect</button>
         </form>
       </div>
 
       <div class="canvas-wrap">
-        <div id="emptyState" class="empty">Select an image</div>
+        <div id="emptyState" class="empty">Select a construction-site image</div>
         <canvas id="imageCanvas" hidden></canvas>
       </div>
 
       <div class="results">
-        <div id="resultGrid" class="result-grid"></div>
+        <div id="resultList" class="result-list"></div>
       </div>
     </section>
   </main>
 
   <script>
-    const statusEl = document.getElementById("serviceStatus");
+    const serviceStatus = document.getElementById("serviceStatus");
     const responseBox = document.getElementById("responseBox");
     const registerForm = document.getElementById("registerForm");
     const deleteForm = document.getElementById("deleteForm");
-    const identifyForm = document.getElementById("identifyForm");
+    const detectForm = document.getElementById("detectForm");
     const registerMessage = document.getElementById("registerMessage");
     const deleteMessage = document.getElementById("deleteMessage");
-    const identifyMessage = document.getElementById("identifyMessage");
+    const detectMessage = document.getElementById("detectMessage");
     const refreshStatus = document.getElementById("refreshStatus");
+    const fileInput = document.getElementById("detectImage");
     const canvas = document.getElementById("imageCanvas");
     const ctx = canvas.getContext("2d");
     const emptyState = document.getElementById("emptyState");
-    const resultGrid = document.getElementById("resultGrid");
-
-    let lastIdentifyImage = null;
+    const resultList = document.getElementById("resultList");
+    const violationCount = document.getElementById("violationCount");
+    const personCount = document.getElementById("personCount");
 
     function setMessage(el, text, kind) {
       el.textContent = text || "";
@@ -404,8 +431,10 @@ TEST_PAGE_HTML = """<!doctype html>
         ? await response.json()
         : { detail: await response.text() };
       if (!response.ok) {
-        const detail = payload.detail || response.statusText;
-        throw Object.assign(new Error(detail), { payload, status: response.status });
+        throw Object.assign(new Error(payload.detail || response.statusText), {
+          payload,
+          status: response.status,
+        });
       }
       return payload;
     }
@@ -413,11 +442,9 @@ TEST_PAGE_HTML = """<!doctype html>
     async function loadHealth() {
       try {
         const payload = await requestJson("/health");
-        statusEl.textContent = `Ready · ${payload.registered_faces} registered`;
-        showResponse(payload);
+        serviceStatus.textContent = `Ready · ${payload.registered_faces} registered`;
       } catch (error) {
-        statusEl.textContent = "Service unavailable";
-        showResponse(error.payload || { detail: error.message });
+        serviceStatus.textContent = "Service unavailable";
       }
     }
 
@@ -434,8 +461,8 @@ TEST_PAGE_HTML = """<!doctype html>
       });
     }
 
-    function drawImage(image) {
-      const maxWidth = 1200;
+    function drawBase(image) {
+      const maxWidth = 1280;
       const scale = Math.min(1, maxWidth / image.naturalWidth);
       canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
       canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -446,62 +473,76 @@ TEST_PAGE_HTML = """<!doctype html>
       return scale;
     }
 
-    function drawFaces(image, faces) {
-      const scale = drawImage(image);
-      ctx.lineWidth = Math.max(2, Math.round(canvas.width / 420));
-      ctx.font = "700 16px system-ui, sans-serif";
-      ctx.textBaseline = "top";
+    function drawBox(bbox, scale, color, label) {
+      const [x1, y1, x2, y2] = bbox.map((value) => value * scale);
+      ctx.save();
+      ctx.lineWidth = Math.max(2, Math.round(canvas.width / 430));
+      ctx.strokeStyle = color;
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
-      for (const face of faces) {
-        const [x1, y1, x2, y2] = face.bbox.map((value) => value * scale);
-        const recognized = Boolean(face.recognized);
-        const color = recognized ? "#087443" : "#b42318";
-        const label = recognized
-          ? `${face.name || face.id} ${Number(face.match_score || 0).toFixed(3)}`
-          : "unknown";
-        const textWidth = ctx.measureText(label).width;
-        const labelX = Math.max(0, Math.min(x1, canvas.width - textWidth - 14));
+      if (label) {
+        ctx.font = "800 16px system-ui, sans-serif";
+        ctx.textBaseline = "top";
+        const width = ctx.measureText(label).width;
+        const labelX = Math.max(0, Math.min(x1, canvas.width - width - 14));
         const labelY = Math.max(0, y1 - 28);
-
-        ctx.strokeStyle = color;
-        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
         ctx.fillStyle = color;
-        ctx.fillRect(labelX, labelY, textWidth + 14, 24);
+        ctx.fillRect(labelX, labelY, width + 14, 24);
         ctx.fillStyle = "#ffffff";
         ctx.fillText(label, labelX + 7, labelY + 3);
       }
+      ctx.restore();
     }
 
-    function renderResults(faces) {
-      resultGrid.innerHTML = "";
-      if (!faces.length) {
+    function drawDetections(image, payload) {
+      const scale = drawBase(image);
+      const personsByBox = new Map((payload.persons || []).map((person) => [JSON.stringify(person.bbox), person]));
+      for (const violation of payload.violations || []) {
+        const person = personsByBox.get(JSON.stringify(violation.bbox)) || violation;
+        const identity = person.identity || violation.identity || {};
+        const name = identity.name || identity.id || "unknown";
+        drawBox(violation.bbox, scale, "#b42318", name);
+      }
+    }
+
+    function renderResults(payload) {
+      resultList.innerHTML = "";
+      violationCount.textContent = String(payload.count || 0);
+      personCount.textContent = String((payload.persons || []).length);
+
+      const violations = payload.violations || [];
+      if (!violations.length) {
         const item = document.createElement("div");
         item.className = "result-item";
         const title = document.createElement("strong");
-        title.textContent = "No faces";
         const text = document.createElement("span");
-        text.textContent = "No face detected in this image.";
+        title.textContent = "No PPE violations";
+        text.textContent = "No person missing required safety equipment.";
         item.append(title, text);
-        resultGrid.appendChild(item);
+        resultList.appendChild(item);
         return;
       }
 
-      for (const [index, face] of faces.entries()) {
+      const personsByBox = new Map((payload.persons || []).map((person) => [JSON.stringify(person.bbox), person]));
+      for (const [index, violation] of violations.entries()) {
+        const person = personsByBox.get(JSON.stringify(violation.bbox)) || violation;
         const item = document.createElement("div");
         item.className = "result-item";
-        const title = face.recognized ? (face.name || face.id) : "Unknown";
-        const matchScore = face.match_score == null ? "-" : Number(face.match_score).toFixed(4);
-        const detScore = Number(face.detection_score || 0).toFixed(4);
-        const heading = document.createElement("strong");
-        const idLine = document.createElement("span");
-        const matchLine = document.createElement("span");
-        const detectLine = document.createElement("span");
-        heading.textContent = `#${index + 1} ${title}`;
-        idLine.textContent = `ID: ${face.id || "-"}`;
-        matchLine.textContent = `match: ${matchScore}`;
-        detectLine.textContent = `detect: ${detScore}`;
-        item.append(heading, idLine, matchLine, detectLine);
-        resultGrid.appendChild(item);
+        const title = document.createElement("strong");
+        const identity = document.createElement("span");
+        const helmet = document.createElement("span");
+        const vest = document.createElement("span");
+        const score = document.createElement("span");
+        const missing = document.createElement("span");
+        const personIdentity = person.identity || {};
+        title.textContent = `#${index + 1} ${personIdentity.name || personIdentity.id || "unknown"}`;
+        identity.textContent = `identity: ${personIdentity.recognized ? "recognized" : "unknown"}`;
+        missing.textContent = `missing: ${(violation.missing || []).join(", ") || "unknown"}`;
+        helmet.textContent = `helmet: ${violation.helmet_status || person.helmet_status || "unknown"}`;
+        vest.textContent = `vest: ${violation.vest_status || person.vest_status || "unknown"}`;
+        score.textContent = `person confidence: ${Number(person.confidence || 0).toFixed(4)}`;
+        item.append(title, identity, missing, helmet, vest, score);
+        resultList.appendChild(item);
       }
     }
 
@@ -526,33 +567,6 @@ TEST_PAGE_HTML = """<!doctype html>
       }
     });
 
-    identifyForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      setBusy(identifyForm, true);
-      setMessage(identifyMessage, "Identifying", "");
-      try {
-        const file = getFile(document.getElementById("identifyImage"));
-        const image = await buildImage(file);
-        lastIdentifyImage = image;
-
-        const formData = new FormData();
-        formData.append("img", file);
-        const payload = await requestJson("/faces/identify", { method: "POST", body: formData });
-        drawFaces(image, payload.faces || []);
-        renderResults(payload.faces || []);
-        setMessage(identifyMessage, `${payload.count} face(s) detected`, "ok");
-        showResponse(payload);
-      } catch (error) {
-        setMessage(identifyMessage, error.message, "err");
-        showResponse(error.payload || { detail: error.message });
-        if (lastIdentifyImage) {
-          drawImage(lastIdentifyImage);
-        }
-      } finally {
-        setBusy(identifyForm, false);
-      }
-    });
-
     deleteForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       setBusy(deleteForm, true);
@@ -571,8 +585,29 @@ TEST_PAGE_HTML = """<!doctype html>
       }
     });
 
-    refreshStatus.addEventListener("click", loadHealth);
+    detectForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      setBusy(detectForm, true);
+      setMessage(detectMessage, "Detecting", "");
+      try {
+        const file = getFile(fileInput);
+        const image = await buildImage(file);
+        const formData = new FormData();
+        formData.append("img", file);
+        const payload = await requestJson("/safety/detect", { method: "POST", body: formData });
+        drawDetections(image, payload);
+        renderResults(payload);
+        setMessage(detectMessage, `${(payload.persons || []).length} person(s), ${payload.count} PPE violation(s)`, payload.count ? "err" : "ok");
+        showResponse(payload);
+      } catch (error) {
+        setMessage(detectMessage, error.message, "err");
+        showResponse(error.payload || { detail: error.message });
+      } finally {
+        setBusy(detectForm, false);
+      }
+    });
 
+    refreshStatus.addEventListener("click", loadHealth);
     loadHealth();
   </script>
 </body>

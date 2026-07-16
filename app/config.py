@@ -18,20 +18,33 @@ FACE_MATCH_THRESHOLD = float(os.getenv("FACE_MATCH_THRESHOLD", "0.55"))
 
 HELMET_PPE_MODEL_PATH = os.getenv(
     "HELMET_PPE_MODEL_PATH",
-    str(BASE_DIR / "models" / "helmet" / "yolov8m-hard-hat-detection" / "best.pt"),
+    str(BASE_DIR / "models" / "helmet" / "ppe-detection-yolo" / "ppe.pt"),
 )
-HELMET_PERSON_MODEL_PATH = os.getenv("HELMET_PERSON_MODEL_PATH", "yolov8n.pt")
 HELMET_CONF_THRESHOLD = float(os.getenv("HELMET_CONF_THRESHOLD", "0.35"))
-HELMET_PERSON_CONF_THRESHOLD = float(os.getenv("HELMET_PERSON_CONF_THRESHOLD", "0.35"))
 HELMET_IMAGE_SIZE = int(os.getenv("HELMET_IMAGE_SIZE", "640"))
 HELMET_NO_HELMET_CLASSES = {
     item.strip().lower()
-    for item in os.getenv("HELMET_NO_HELMET_CLASSES", "NO-Hardhat,NO-Helmet,nohat").split(",")
+    for item in os.getenv("HELMET_NO_HELMET_CLASSES", "NO-Hardhat,nohat,NO-Helmet").split(",")
     if item.strip()
 }
 HELMET_WITH_HELMET_CLASSES = {
     item.strip().lower()
-    for item in os.getenv("HELMET_WITH_HELMET_CLASSES", "Hardhat,Helmet,hat").split(",")
+    for item in os.getenv("HELMET_WITH_HELMET_CLASSES", "Hardhat,hat,Helmet").split(",")
+    if item.strip()
+}
+HELMET_NO_VEST_CLASSES = {
+    item.strip().lower()
+    for item in os.getenv("HELMET_NO_VEST_CLASSES", "NO-Safety Vest,novest,NO-Vest").split(",")
+    if item.strip()
+}
+HELMET_WITH_VEST_CLASSES = {
+    item.strip().lower()
+    for item in os.getenv("HELMET_WITH_VEST_CLASSES", "Safety Vest,vest").split(",")
+    if item.strip()
+}
+HELMET_PERSON_CLASSES = {
+    item.strip().lower()
+    for item in os.getenv("HELMET_PERSON_CLASSES", "Person,person").split(",")
     if item.strip()
 }
 

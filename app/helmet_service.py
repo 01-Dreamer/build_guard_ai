@@ -12,10 +12,11 @@ from app.config import (
     HELMET_CONF_THRESHOLD,
     HELMET_IMAGE_SIZE,
     HELMET_NO_HELMET_CLASSES,
-    HELMET_PERSON_CONF_THRESHOLD,
-    HELMET_PERSON_MODEL_PATH,
+    HELMET_NO_VEST_CLASSES,
+    HELMET_PERSON_CLASSES,
     HELMET_PPE_MODEL_PATH,
     HELMET_WITH_HELMET_CLASSES,
+    HELMET_WITH_VEST_CLASSES,
 )
 
 
@@ -45,87 +46,102 @@ def _model_path_is_local(path: str) -> bool:
 
 
 class HelmetDetectionService:
-    """Detect people without helmets by assigning NO-Hardhat heads to person boxes."""
+    """Assign combined PPE detections to person boxes.
+
+    Expected classes for the default model include:
+    Person, Hardhat, NO-Hardhat, Safety Vest, NO-Safety Vest.
+    """
 
     def __init__(
         self,
         ppe_model_path: str = HELMET_PPE_MODEL_PATH,
-        person_model_path: str = HELMET_PERSON_MODEL_PATH,
         ppe_conf: float = HELMET_CONF_THRESHOLD,
-        person_conf: float = HELMET_PERSON_CONF_THRESHOLD,
         image_size: int = HELMET_IMAGE_SIZE,
     ) -> None:
         self.ppe_model_path = ppe_model_path
-        self.person_model_path = person_model_path
         self.ppe_conf = ppe_conf
-        self.person_conf = person_conf
         self.image_size = image_size
-        self._ppe_model: YOLO | None = None
-        self._person_model: YOLO | None = None
+        self._model: YOLO | None = None
         self._lock = threading.RLock()
 
     def detect(self, image: np.ndarray) -> dict[str, Any]:
-        ppe_detections = self._predict_ppe(image)
-        person_detections = self._predict_persons(image)
-
-        no_helmet_heads = [
-            item for item in ppe_detections if item.class_name.strip().lower() in HELMET_NO_HELMET_CLASSES
-        ]
-        helmet_heads = [
-            item for item in ppe_detections if item.class_name.strip().lower() in HELMET_WITH_HELMET_CLASSES
+        detections = self._predict(image)
+        person_detections = _suppress_overlapping_persons(
+            [
+                item
+                for item in detections
+                if item.class_name.strip().lower() in HELMET_PERSON_CLASSES
+            ]
+        )
+        ppe_detections = [
+            item for item in detections if item.class_name.strip().lower() not in HELMET_PERSON_CLASSES
         ]
 
         persons = []
+        violations = []
         for person in person_detections:
-            no_helmet_matches = _detections_inside(person.bbox, no_helmet_heads)
-            helmet_matches = _detections_inside(person.bbox, helmet_heads)
-            status = "unknown"
-            if no_helmet_matches:
-                status = "no_helmet"
-            elif helmet_matches:
-                status = "with_helmet"
-            persons.append(
-                {
-                    "bbox": person.bbox,
-                    "confidence": person.confidence,
-                    "helmet_status": status,
-                    "no_helmet_heads": [_detection_payload(item) for item in no_helmet_matches],
-                    "helmet_heads": [_detection_payload(item) for item in helmet_matches],
-                }
+            assigned = _detections_inside(person.bbox, ppe_detections)
+            helmet_items = [
+                item
+                for item in assigned
+                if item.class_name.strip().lower() in HELMET_WITH_HELMET_CLASSES
+            ]
+            no_helmet_items = [
+                item for item in assigned if item.class_name.strip().lower() in HELMET_NO_HELMET_CLASSES
+            ]
+            vest_items = [
+                item
+                for item in assigned
+                if item.class_name.strip().lower() in HELMET_WITH_VEST_CLASSES
+            ]
+            no_vest_items = [
+                item for item in assigned if item.class_name.strip().lower() in HELMET_NO_VEST_CLASSES
+            ]
+
+            helmet_status = _status(
+                ok_items=helmet_items,
+                missing_items=no_helmet_items,
+                ok_label="with_helmet",
+                missing_label="no_helmet",
+                unknown_label="unknown",
+            )
+            vest_status = _status(
+                ok_items=vest_items,
+                missing_items=no_vest_items,
+                ok_label="with_vest",
+                missing_label="no_vest",
+                unknown_label="unknown",
             )
 
-        violations = []
-        used_person_indexes: set[int] = set()
-        for head in no_helmet_heads:
-            person_index = _find_person_for_head(head, person_detections)
-            if person_index is not None:
-                if person_index in used_person_indexes:
-                    continue
-                used_person_indexes.add(person_index)
-                person = person_detections[person_index]
+            person_payload = {
+                "bbox": person.bbox,
+                "confidence": person.confidence,
+                "helmet_status": helmet_status,
+                "vest_status": vest_status,
+                "helmet_detections": [_detection_payload(item) for item in helmet_items],
+                "no_helmet_detections": [_detection_payload(item) for item in no_helmet_items],
+                "vest_detections": [_detection_payload(item) for item in vest_items],
+                "no_vest_detections": [_detection_payload(item) for item in no_vest_items],
+                "ppe_detections": [_detection_payload(item) for item in assigned],
+            }
+            persons.append(person_payload)
+
+            missing = []
+            if helmet_status == "no_helmet":
+                missing.append("helmet")
+            if vest_status == "no_vest":
+                missing.append("vest")
+            if missing:
                 violations.append(
                     {
                         "bbox": person.bbox,
                         "person_bbox": person.bbox,
-                        "head_bbox": head.bbox,
-                        "confidence": min(person.confidence, head.confidence),
+                        "confidence": person.confidence,
                         "person_confidence": person.confidence,
-                        "head_confidence": head.confidence,
-                        "head_class": head.class_name,
+                        "helmet_status": helmet_status,
+                        "vest_status": vest_status,
+                        "missing": missing,
                         "matched_person": True,
-                    }
-                )
-            else:
-                violations.append(
-                    {
-                        "bbox": head.bbox,
-                        "person_bbox": None,
-                        "head_bbox": head.bbox,
-                        "confidence": head.confidence,
-                        "person_confidence": None,
-                        "head_confidence": head.confidence,
-                        "head_class": head.class_name,
-                        "matched_person": False,
                     }
                 )
 
@@ -133,39 +149,21 @@ class HelmetDetectionService:
             "count": len(violations),
             "violations": violations,
             "persons": persons,
-            "detections": [_detection_payload(item) for item in ppe_detections],
+            "detections": [_detection_payload(item) for item in detections],
             "model": {
                 "ppe": self.ppe_model_path,
-                "person": self.person_model_path,
-                "ppe_classes": self._ppe_names(),
-                "person_classes": self._person_names(),
+                "ppe_classes": self._names(),
                 "ppe_conf": self.ppe_conf,
-                "person_conf": self.person_conf,
             },
         }
 
-    def _predict_ppe(self, image: np.ndarray) -> list[Detection]:
-        model = self._get_ppe_model()
-        return self._predict(model, image, conf=self.ppe_conf)
-
-    def _predict_persons(self, image: np.ndarray) -> list[Detection]:
-        model = self._get_person_model()
-        detections = self._predict(model, image, conf=self.person_conf, classes=[0])
-        return [item for item in detections if item.class_name.lower() == "person" or item.class_id == 0]
-
-    def _predict(
-        self,
-        model: YOLO,
-        image: np.ndarray,
-        conf: float,
-        classes: list[int] | None = None,
-    ) -> list[Detection]:
+    def _predict(self, image: np.ndarray) -> list[Detection]:
+        model = self._get_model()
         with self._lock:
             results = model.predict(
                 source=image,
-                conf=conf,
+                conf=self.ppe_conf,
                 imgsz=self.image_size,
-                classes=classes,
                 verbose=False,
             )
 
@@ -193,33 +191,38 @@ class HelmetDetectionService:
             )
         return detections
 
-    def _get_ppe_model(self) -> YOLO:
+    def _get_model(self) -> YOLO:
         with self._lock:
-            if self._ppe_model is None:
-                self._ensure_model_exists(self.ppe_model_path, "PPE")
-                self._ppe_model = YOLO(self.ppe_model_path)
-            return self._ppe_model
+            if self._model is None:
+                self._ensure_model_exists(self.ppe_model_path)
+                self._model = YOLO(self.ppe_model_path)
+            return self._model
 
-    def _get_person_model(self) -> YOLO:
-        with self._lock:
-            if self._person_model is None:
-                self._person_model = YOLO(self.person_model_path)
-            return self._person_model
-
-    def _ensure_model_exists(self, model_path: str, label: str) -> None:
+    def _ensure_model_exists(self, model_path: str) -> None:
         if _model_path_is_local(model_path) and not Path(model_path).exists():
             raise HelmetServiceError(
-                f"{label} model not found: {model_path}. Set HELMET_PPE_MODEL_PATH to a trained helmet model.",
+                f"PPE model not found: {model_path}. Download Vinayakmane47/PPE_detection_YOLO "
+                "ppe.pt there or set HELMET_PPE_MODEL_PATH.",
                 status_code=503,
             )
 
-    def _ppe_names(self) -> dict[int, str]:
-        model = self._get_ppe_model()
+    def _names(self) -> dict[int, str]:
+        model = self._get_model()
         return {int(key): str(value) for key, value in model.names.items()}
 
-    def _person_names(self) -> dict[int, str]:
-        model = self._get_person_model()
-        return {int(key): str(value) for key, value in model.names.items()}
+
+def _status(
+    ok_items: list[Detection],
+    missing_items: list[Detection],
+    ok_label: str,
+    missing_label: str,
+    unknown_label: str,
+) -> str:
+    candidates = [(item.confidence, ok_label) for item in ok_items]
+    candidates.extend((item.confidence, missing_label) for item in missing_items)
+    if not candidates:
+        return unknown_label
+    return max(candidates, key=lambda item: item[0])[1]
 
 
 def _detection_payload(detection: Detection) -> dict[str, Any]:
@@ -235,24 +238,12 @@ def _detections_inside(person_bbox: list[float], detections: list[Detection]) ->
     return [item for item in detections if _point_inside_bbox(_bbox_center(item.bbox), person_bbox)]
 
 
-def _find_person_for_head(head: Detection, persons: list[Detection]) -> int | None:
-    center = _bbox_center(head.bbox)
-    containing = [
-        (index, _bbox_area(person.bbox))
-        for index, person in enumerate(persons)
-        if _point_inside_bbox(center, person.bbox)
-    ]
-    if containing:
-        return min(containing, key=lambda item: item[1])[0]
-
-    overlaps = [
-        (index, _intersection_ratio(head.bbox, person.bbox))
-        for index, person in enumerate(persons)
-    ]
-    overlaps = [item for item in overlaps if item[1] > 0]
-    if not overlaps:
-        return None
-    return max(overlaps, key=lambda item: item[1])[0]
+def _suppress_overlapping_persons(persons: list[Detection], iou_threshold: float = 0.55) -> list[Detection]:
+    kept: list[Detection] = []
+    for person in sorted(persons, key=lambda item: item.confidence, reverse=True):
+        if all(_iou(person.bbox, kept_person.bbox) < iou_threshold for kept_person in kept):
+            kept.append(person)
+    return kept
 
 
 def _bbox_center(bbox: list[float]) -> tuple[float, float]:
@@ -266,20 +257,17 @@ def _point_inside_bbox(point: tuple[float, float], bbox: list[float]) -> bool:
     return x1 <= x <= x2 and y1 <= y <= y2
 
 
-def _bbox_area(bbox: list[float]) -> float:
-    x1, y1, x2, y2 = bbox
-    return max(0.0, x2 - x1) * max(0.0, y2 - y1)
-
-
-def _intersection_ratio(inner_bbox: list[float], outer_bbox: list[float]) -> float:
-    ax1, ay1, ax2, ay2 = inner_bbox
-    bx1, by1, bx2, by2 = outer_bbox
+def _iou(a: list[float], b: list[float]) -> float:
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
     ix1 = max(ax1, bx1)
     iy1 = max(ay1, by1)
     ix2 = min(ax2, bx2)
     iy2 = min(ay2, by2)
-    intersection = _bbox_area([ix1, iy1, ix2, iy2])
-    area = _bbox_area(inner_bbox)
-    if area <= 0:
+    intersection = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - intersection
+    if union <= 0:
         return 0.0
-    return intersection / area
+    return intersection / union

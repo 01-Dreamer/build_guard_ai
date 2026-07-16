@@ -119,29 +119,36 @@ class FaceRecognitionService:
         faces = self.engine.detect(image)
         results = []
         for face in faces:
-            match = self.store.search(face.embedding, threshold=self.threshold)
-            item: dict[str, Any] = {
-                "bbox": face.bbox,
-                "detection_score": face.detection_score,
-                "recognized": match is not None,
-                "id": None,
-                "name": None,
-                "match_score": None,
-            }
-            if match is not None:
-                item.update(
-                    {
-                        "id": match.person_id,
-                        "name": match.name,
-                        "match_score": match.score,
-                    }
-                )
-            results.append(item)
+            results.append(self._face_identity_payload(face))
 
         return {
             "count": len(results),
             "threshold": self.threshold,
             "faces": results,
+        }
+
+    def identify_best(self, image: np.ndarray) -> dict[str, Any]:
+        faces = self.engine.detect(image)
+        if not faces:
+            return {
+                "recognized": False,
+                "id": None,
+                "name": None,
+                "match_score": None,
+                "face_bbox": None,
+                "face_detection_score": None,
+                "reason": "no_face_detected",
+            }
+
+        identity = self._face_identity_payload(faces[0])
+        return {
+            "recognized": identity["recognized"],
+            "id": identity["id"],
+            "name": identity["name"],
+            "match_score": identity["match_score"],
+            "face_bbox": identity["bbox"],
+            "face_detection_score": identity["detection_score"],
+            "reason": None if identity["recognized"] else "unknown_face",
         }
 
     def delete(self, person_id: str) -> dict[str, Any]:
@@ -151,6 +158,26 @@ class FaceRecognitionService:
             "deleted": deleted,
             "faces_total": self.store.count,
         }
+
+    def _face_identity_payload(self, face: DetectedFace) -> dict[str, Any]:
+        match = self.store.search(face.embedding, threshold=self.threshold)
+        item: dict[str, Any] = {
+            "bbox": face.bbox,
+            "detection_score": face.detection_score,
+            "recognized": match is not None,
+            "id": None,
+            "name": None,
+            "match_score": None,
+        }
+        if match is not None:
+            item.update(
+                {
+                    "id": match.person_id,
+                    "name": match.name,
+                    "match_score": match.score,
+                }
+            )
+        return item
 
 
 def decode_image(content: bytes) -> np.ndarray:
