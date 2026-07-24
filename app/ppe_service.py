@@ -9,18 +9,18 @@ import numpy as np
 from ultralytics import YOLO
 
 from app.config import (
-    HELMET_CONF_THRESHOLD,
-    HELMET_IMAGE_SIZE,
-    HELMET_NO_HELMET_CLASSES,
-    HELMET_NO_VEST_CLASSES,
-    HELMET_PERSON_CLASSES,
-    HELMET_PPE_MODEL_PATH,
-    HELMET_WITH_HELMET_CLASSES,
-    HELMET_WITH_VEST_CLASSES,
+    PPE_CONF_THRESHOLD,
+    PPE_IMAGE_SIZE,
+    PPE_MODEL_PATH,
+    PPE_NO_HELMET_CLASSES,
+    PPE_NO_VEST_CLASSES,
+    PPE_PERSON_CLASSES,
+    PPE_WITH_HELMET_CLASSES,
+    PPE_WITH_VEST_CLASSES,
 )
 
 
-class HelmetServiceError(Exception):
+class PpeServiceError(Exception):
     def __init__(self, message: str, status_code: int = 400) -> None:
         super().__init__(message)
         self.message = message
@@ -45,7 +45,7 @@ def _model_path_is_local(path: str) -> bool:
     )
 
 
-class HelmetDetectionService:
+class PpeDetectionService:
     """Assign combined PPE detections to person boxes.
 
     Expected classes for the default model include:
@@ -54,9 +54,9 @@ class HelmetDetectionService:
 
     def __init__(
         self,
-        ppe_model_path: str = HELMET_PPE_MODEL_PATH,
-        ppe_conf: float = HELMET_CONF_THRESHOLD,
-        image_size: int = HELMET_IMAGE_SIZE,
+        ppe_model_path: str = PPE_MODEL_PATH,
+        ppe_conf: float = PPE_CONF_THRESHOLD,
+        image_size: int = PPE_IMAGE_SIZE,
     ) -> None:
         self.ppe_model_path = ppe_model_path
         self.ppe_conf = ppe_conf
@@ -70,11 +70,11 @@ class HelmetDetectionService:
             [
                 item
                 for item in detections
-                if item.class_name.strip().lower() in HELMET_PERSON_CLASSES
+                if item.class_name.strip().lower() in PPE_PERSON_CLASSES
             ]
         )
         ppe_detections = [
-            item for item in detections if item.class_name.strip().lower() not in HELMET_PERSON_CLASSES
+            item for item in detections if item.class_name.strip().lower() not in PPE_PERSON_CLASSES
         ]
 
         persons = []
@@ -84,18 +84,18 @@ class HelmetDetectionService:
             helmet_items = [
                 item
                 for item in assigned
-                if item.class_name.strip().lower() in HELMET_WITH_HELMET_CLASSES
+                if item.class_name.strip().lower() in PPE_WITH_HELMET_CLASSES
             ]
             no_helmet_items = [
-                item for item in assigned if item.class_name.strip().lower() in HELMET_NO_HELMET_CLASSES
+                item for item in assigned if item.class_name.strip().lower() in PPE_NO_HELMET_CLASSES
             ]
             vest_items = [
                 item
                 for item in assigned
-                if item.class_name.strip().lower() in HELMET_WITH_VEST_CLASSES
+                if item.class_name.strip().lower() in PPE_WITH_VEST_CLASSES
             ]
             no_vest_items = [
-                item for item in assigned if item.class_name.strip().lower() in HELMET_NO_VEST_CLASSES
+                item for item in assigned if item.class_name.strip().lower() in PPE_NO_VEST_CLASSES
             ]
 
             helmet_status = _status(
@@ -200,9 +200,9 @@ class HelmetDetectionService:
 
     def _ensure_model_exists(self, model_path: str) -> None:
         if _model_path_is_local(model_path) and not Path(model_path).exists():
-            raise HelmetServiceError(
+            raise PpeServiceError(
                 f"PPE model not found: {model_path}. Download Vinayakmane47/PPE_detection_YOLO "
-                "ppe.pt there or set HELMET_PPE_MODEL_PATH.",
+                "ppe.pt there or set PPE_MODEL_PATH.",
                 status_code=503,
             )
 
