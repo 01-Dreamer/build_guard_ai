@@ -5,28 +5,28 @@ from typing import Any
 import numpy as np
 
 from app.face_service import FaceRecognitionService
-from app.helmet_service import HelmetDetectionService
+from app.ppe_service import PpeDetectionService
 
 
-class NoHelmetSafetyService:
+class PpeSafetyService:
     def __init__(
         self,
-        helmet_service: HelmetDetectionService,
+        ppe_service: PpeDetectionService,
         face_service: FaceRecognitionService,
     ) -> None:
-        self.helmet_service = helmet_service
+        self.ppe_service = ppe_service
         self.face_service = face_service
 
     def detect(self, image: np.ndarray) -> dict[str, Any]:
-        helmet_result = self.helmet_service.detect(image)
+        ppe_result = self.ppe_service.detect(image)
         persons = []
-        for person in helmet_result["persons"]:
+        for person in ppe_result["persons"]:
             item = dict(person)
             item["identity"] = self._identify_person(image, item)
             persons.append(item)
 
         violations = []
-        for violation in helmet_result["violations"]:
+        for violation in ppe_result["violations"]:
             item = dict(violation)
             item["identity"] = self._identity_for_violation(persons, item)
             violations.append(item)
@@ -35,8 +35,8 @@ class NoHelmetSafetyService:
             "count": len(violations),
             "violations": violations,
             "persons": persons,
-            "ppe_detections": helmet_result["detections"],
-            "model": helmet_result["model"],
+            "ppe_detections": ppe_result["detections"],
+            "model": ppe_result["model"],
         }
 
     def _identify_person(self, image: np.ndarray, person: dict[str, Any]) -> dict[str, Any]:

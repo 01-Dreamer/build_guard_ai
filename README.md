@@ -1,6 +1,14 @@
 # BuildGuard AI Service
 
-FastAPI service for registering worker faces and detecting PPE status in site images.
+RabbitMQ AI worker for BuildGuard. This project does not expose an HTTP service; Java sends AI tasks through MQ and consumes the result through MQ.
+
+The production integration path is MQ:
+
+```text
+Java server -> buildguard.ai.request -> Python worker -> buildguard.ai.result -> Java server
+```
+
+The worker supports `camera_yolo`, `yolo_detection`, `ppe_detection`, `face_recognition`, and `tower_prediction`. If a local YOLO or tower model is not available, it returns stable mock/rule results with the same response shape so the Java side can test the full async flow.
 
 ## Run
 
@@ -8,14 +16,22 @@ Use the existing conda environment:
 
 ```bash
 conda activate BuildGuard
-uvicorn app.main:app --host 0.0.0.0 --port 8080
+pip install -r requirements.txt
+python -m app.worker
 ```
 
-The first request that uses InsightFace may download the configured model pack into `~/.insightface`.
+Run a worker-only smoke test without RabbitMQ:
+
+```bash
+conda activate BuildGuard
+python -m app.worker --dry-run
+```
+
+The first task that uses InsightFace may download the configured model pack into `~/.insightface`.
 The PPE detector uses the `Vinayakmane47/PPE_detection_YOLO` weight at:
 
 ```text
-models/helmet/ppe-detection-yolo/ppe.pt
+models/ppe/ppe-detection-yolo/ppe.pt
 ```
 
 Download source:
@@ -26,43 +42,41 @@ https://github.com/Vinayakmane47/PPE_detection_YOLO
 
 The model classes include `Hardhat`, `NO-Hardhat`, `Safety Vest`, `NO-Safety Vest`, `Person`, `Mask`, `NO-Mask`, `Safety Cone`, `machinery`, and `vehicle`.
 
-## APIs
+## RabbitMQ messages
 
-Open the browser test page:
+The worker consumes JSON strings from `buildguard.ai.request` and publishes JSON strings to `buildguard.ai.result`.
 
-```text
-http://127.0.0.1:8080/
+Example request:
+
+```json
+{
+  "messageId": "msg-001",
+  "eventType": "ai.request",
+  "taskId": "task-001",
+  "taskType": "tower_prediction",
+  "deviceCode": "TC-001",
+  "deviceType": "tower_crane",
+  "occurredAt": "2026-07-17T10:00:00+08:00",
+  "sentAt": "2026-07-17T10:00:01+08:00",
+  "payload": {
+    "ratedLoad": 10,
+    "ratedMoment": 80,
+    "telemetry": [
+      {
+        "weight": 8.4,
+        "amplitude": 9.8,
+        "moment": 82.3,
+        "windSpeed": 13.2,
+        "obliquity": 2.1,
+        "height": 31.5,
+        "rotation": 120
+      }
+    ]
+  }
+}
 ```
 
-1. Register or overwrite a face:
-
-```bash
-curl -X POST http://127.0.0.1:8080/faces/register \
-  -F "id=worker001" \
-  -F "name=张三" \
-  -F "img=@/path/to/face.jpg"
-```
-
-`name` is optional. If omitted, it defaults to the same value as `id`.
-
-2. Delete a registered face:
-
-```bash
-curl -X DELETE http://127.0.0.1:8080/faces/worker001
-```
-
-3. Detect people, safety helmets, safety vests, and identify faces when possible:
-
-```bash
-curl -X POST http://127.0.0.1:8080/safety/detect \
-  -F "img=@/path/to/site.jpg"
-```
-
-Health check:
-
-```bash
-curl http://127.0.0.1:8080/health
-```
+Result fields include `taskId`, `resultStatus`, `detections`, `prediction`, `model`, and `errorMessage`.
 
 ## Persistence
 
@@ -83,5 +97,11 @@ Useful environment variables:
 - `INSIGHTFACE_DET_SIZE`: detection size, default `640,640`
 - `INSIGHTFACE_SMALL_DET_SIZE`: detection size for images up to 320px, default `320,320`
 - `INSIGHTFACE_PROVIDERS`: ONNX Runtime providers, default `CPUExecutionProvider`
-- `HELMET_PPE_MODEL_PATH`: PPE model path, default `models/helmet/ppe-detection-yolo/ppe.pt`
-- `HELMET_CONF_THRESHOLD`: helmet model confidence threshold, default `0.35`
+- `PPE_MODEL_PATH`: PPE model path, default `models/ppe/ppe-detection-yolo/ppe.pt`
+- `PPE_CONF_THRESHOLD`: PPE model confidence threshold, default `0.35`
+- `PPE_IMAGE_SIZE`: YOLO inference image size, default `640`
+- `RABBITMQ_URL`: RabbitMQ connection URL, default guest connection to `110.41.166.11:5672`
+- `AI_REQUEST_QUEUE`: request queue, default `buildguard.ai.request`
+- `AI_RESULT_QUEUE`: result queue, default `buildguard.ai.result`
+- `AI_WORKER_PREFETCH`: worker prefetch count, default `1`
+- `AI_WORKER_RECONNECT_SECONDS`: reconnect delay, default `5`
