@@ -1,3 +1,17 @@
+"""YOLO PPE（个人防护装备）检测服务。
+
+使用 ultralytics YOLO 模型对工地摄像头画面进行安全帽和反光衣检测。
+检测逻辑：
+1. YOLO 推理 → 人员框 + PPE 检测框
+2. NMS 去重（重叠的人员框合并）
+3. 将 PPE 检测框通过 IoU 匹配到对应的人员框
+4. 判断每个人员是否佩戴安全帽/穿着反光衣
+5. 输出违规列表（未戴安全帽、未穿反光衣）
+
+模型来源: Vinayakmane47/PPE_detection_YOLO
+模型类别: Person, Hardhat, NO-Hardhat, Safety Vest, NO-Safety Vest 等
+"""
+
 from __future__ import annotations
 
 import threading
@@ -21,6 +35,7 @@ from app.config import (
 
 
 class PpeServiceError(Exception):
+    """PPE 服务异常，携带 HTTP 状态码用于错误响应。"""
     def __init__(self, message: str, status_code: int = 400) -> None:
         super().__init__(message)
         self.message = message
@@ -29,13 +44,15 @@ class PpeServiceError(Exception):
 
 @dataclass(frozen=True)
 class Detection:
-    bbox: list[float]
-    confidence: float
-    class_id: int
-    class_name: str
+    """YOLO 单次检测结果（不可变）。"""
+    bbox: list[float]       # 边界框 [x1, y1, x2, y2]
+    confidence: float        # 置信度
+    class_id: int            # 类别 ID
+    class_name: str          # 类别名称
 
 
 def _model_path_is_local(path: str) -> bool:
+    """判断模型路径是否为本地文件路径（非 HuggingFace/HTTP）。"""
     return not (
         path.startswith("hf://")
         or path.startswith("http://")
@@ -46,10 +63,11 @@ def _model_path_is_local(path: str) -> bool:
 
 
 class PpeDetectionService:
-    """Assign combined PPE detections to person boxes.
+    """PPE 检测服务：将 YOLO 检测结果与人员框关联，判定每个人员的 PPE 佩戴状态。
 
-    Expected classes for the default model include:
-    Person, Hardhat, NO-Hardhat, Safety Vest, NO-Safety Vest.
+    用法:
+        service = PpeDetectionService()
+        result = service.detect(image)  # 返回违规列表和人员列表
     """
 
     def __init__(
@@ -58,14 +76,38 @@ class PpeDetectionService:
         ppe_conf: float = PPE_CONF_THRESHOLD,
         image_size: int = PPE_IMAGE_SIZE,
     ) -> None:
+        """初始化 PPE 检测服务。
+
+        参数:
+            ppe_model_path: YOLO 模型权重文件路径
+            ppe_conf:       置信度阈值
+            image_size:     推理时的输入图像尺寸
+        """
         self.ppe_model_path = ppe_model_path
         self.ppe_conf = ppe_conf
         self.image_size = image_size
         self._model: YOLO | None = None
-        self._lock = threading.RLock()
+        self._lock = threading.RLock()  # 模型加载和推理需要线程安全
 
     def detect(self, image: np.ndarray) -> dict[str, Any]:
+        """对输入图片进行 PPE 检测。
+
+        参数:
+            image: OpenCV 格式的 BGR 图片 (numpy array)
+
+        返回:
+            {
+                "count":      违规人数,
+                "violations": [违规详情列表],
+                "persons":    [每个人员的 PPE 状态],
+                "detections": [所有 YOLO 原始检测结果],
+                "model":      {模型信息},
+            }
+        """
+        # YOLO 推理
         detections = self._predict(image)
+
+        # 从检测结果中分离人员框和 PPE 检测框
         person_detections = _suppress_overlapping_persons(
             [
                 item
@@ -80,7 +122,10 @@ class PpeDetectionService:
         persons = []
         violations = []
         for person in person_detections:
+            # 找出落在当前人员框内的所有 PPE 检测结果
             assigned = _detections_inside(person.bbox, ppe_detections)
+
+            # 分别筛选安全帽和反光衣的检测结果
             helmet_items = [
                 item
                 for item in assigned
@@ -98,6 +143,7 @@ class PpeDetectionService:
                 item for item in assigned if item.class_name.strip().lower() in PPE_NO_VEST_CLASSES
             ]
 
+            # 以置信度最高的检测结果决定穿戴状态
             helmet_status = _status(
                 ok_items=helmet_items,
                 missing_items=no_helmet_items,
@@ -126,6 +172,7 @@ class PpeDetectionService:
             }
             persons.append(person_payload)
 
+            # 判断是否有 PPE 缺失（违规）
             missing = []
             if helmet_status == "no_helmet":
                 missing.append("helmet")
@@ -158,6 +205,7 @@ class PpeDetectionService:
         }
 
     def _predict(self, image: np.ndarray) -> list[Detection]:
+        """使用 YOLO 模型进行单次推理。"""
         model = self._get_model()
         with self._lock:
             results = model.predict(
@@ -174,6 +222,7 @@ class PpeDetectionService:
         if result.boxes is None or len(result.boxes) == 0:
             return []
 
+        # 将 YOLO 结果转为 Detection 对象列表
         xyxy = result.boxes.xyxy.cpu().numpy()
         confs = result.boxes.conf.cpu().numpy()
         class_ids = result.boxes.cls.cpu().numpy().astype(int)
@@ -192,6 +241,7 @@ class PpeDetectionService:
         return detections
 
     def _get_model(self) -> YOLO:
+        """获取 YOLO 模型实例（懒加载 + 线程安全）。"""
         with self._lock:
             if self._model is None:
                 self._ensure_model_exists(self.ppe_model_path)
@@ -199,16 +249,21 @@ class PpeDetectionService:
             return self._model
 
     def _ensure_model_exists(self, model_path: str) -> None:
+        """检查模型文件是否存在，不存在时抛出明确错误。"""
         if _model_path_is_local(model_path) and not Path(model_path).exists():
             raise PpeServiceError(
-                f"PPE model not found: {model_path}. Download Vinayakmane47/PPE_detection_YOLO "
-                "ppe.pt there or set PPE_MODEL_PATH.",
+                f"PPE 模型文件不存在: {model_path}。请下载 Vinayakmane47/PPE_detection_YOLO "
+                "ppe.pt 或设置 PPE_MODEL_PATH 环境变量。",
                 status_code=503,
             )
 
     def _names(self) -> dict[int, str]:
+        """获取 YOLO 模型的类别 ID → 类别名映射。"""
         model = self._get_model()
         return {int(key): str(value) for key, value in model.names.items()}
+
+
+# ---- 辅助函数 ----
 
 
 def _status(
@@ -218,6 +273,10 @@ def _status(
     missing_label: str,
     unknown_label: str,
 ) -> str:
+    """根据检测结果的最高置信度判定穿戴状态。
+
+    将合格和违规的检测结果按置信度比较，取置信度最高的一方作为判定结果。
+    """
     candidates = [(item.confidence, ok_label) for item in ok_items]
     candidates.extend((item.confidence, missing_label) for item in missing_items)
     if not candidates:
@@ -226,6 +285,7 @@ def _status(
 
 
 def _detection_payload(detection: Detection) -> dict[str, Any]:
+    """将 Detection 对象序列化为字典。"""
     return {
         "bbox": detection.bbox,
         "confidence": detection.confidence,
@@ -235,31 +295,44 @@ def _detection_payload(detection: Detection) -> dict[str, Any]:
 
 
 def _detections_inside(person_bbox: list[float], detections: list[Detection]) -> list[Detection]:
+    """筛选出中心点落在人员框内的 PPE 检测结果。"""
     return [item for item in detections if _point_inside_bbox(_bbox_center(item.bbox), person_bbox)]
 
 
 def _suppress_overlapping_persons(persons: list[Detection], iou_threshold: float = 0.55) -> list[Detection]:
+    """NMS（非极大值抑制）：去除重叠度过高的人员框，保留置信度高的。
+
+    这解决了 YOLO 可能对同一人检测出多个重叠框的问题。
+    """
     kept: list[Detection] = []
     for person in sorted(persons, key=lambda item: item.confidence, reverse=True):
+        # 与所有已保留的人员框比较 IoU
         if all(_iou(person.bbox, kept_person.bbox) < iou_threshold for kept_person in kept):
             kept.append(person)
     return kept
 
 
 def _bbox_center(bbox: list[float]) -> tuple[float, float]:
+    """计算边界框的中心点 (x_center, y_center)。"""
     x1, y1, x2, y2 = bbox
     return (x1 + x2) / 2, (y1 + y2) / 2
 
 
 def _point_inside_bbox(point: tuple[float, float], bbox: list[float]) -> bool:
+    """判断点是否在边界框内。"""
     x, y = point
     x1, y1, x2, y2 = bbox
     return x1 <= x <= x2 and y1 <= y <= y2
 
 
 def _iou(a: list[float], b: list[float]) -> float:
+    """计算两个边界框的 IoU（交并比）。
+
+    IoU = 交集面积 / 并集面积，值域 [0, 1]，越大表示重叠越多。
+    """
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
+    # 交集矩形的坐标
     ix1 = max(ax1, bx1)
     iy1 = max(ay1, by1)
     ix2 = min(ax2, bx2)
