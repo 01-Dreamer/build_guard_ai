@@ -1,3 +1,5 @@
+# BuildGuard AI ignore rules
+
 # Python bytecode
 __pycache__/
 *.py[cod]
@@ -8,6 +10,7 @@ __pycache__/
 venv/
 env/
 ENV/
+.conda/
 
 # Test / lint / type-check caches
 .pytest_cache/
@@ -27,30 +30,39 @@ build/
 # Notebooks
 .ipynb_checkpoints/
 
-# Runtime outputs
+# Runtime outputs and local datasets
+data/
 logs/
 runs/
 outputs/
 checkpoints/
-models/
-data/
-yolo*.pt
+tmp/
+temp/
+uploads/
+faces/
+camera_frames/
+annotated/
 
-# Large model artifacts
+# Large model artifacts and ML caches
+models/
+weights/
 *.pt
 *.pth
 *.onnx
+*.engine
 *.ckpt
+*.safetensors
+yolo*.pt
 
-# Environment
+# Local environment and secrets
 .env
 .env.*
 !.env.example
 
-# OS / editor
-.DS_Store
-Thumbs.db
+# IDE / OS / editor
 .idea/
 .vscode/
+.DS_Store
+Thumbs.db
 *.swp
 *.swo
